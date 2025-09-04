@@ -128,7 +128,7 @@
     </footer>
   </div>
 
-  <script>
+<script>
     // ---- Utilities ----
     const qs = s => document.querySelector(s);
     const todayKey = () => new Date().toISOString().slice(0,10);
@@ -164,6 +164,7 @@
     let timerInterval = null;
     let sessionSeconds = 0; // running session
     let running = false;
+    let startTimestamp = null; // ADDED
 
     function loadData(){ try{ return JSON.parse(localStorage.getItem('study_data')||'{}'); }catch(e){return {}} }
     function saveData(d){ localStorage.setItem('study_data', JSON.stringify(d)); }
@@ -178,18 +179,43 @@
 
     startBtn.addEventListener('click', ()=>{
       if(!running){
-        running=true; startBtn.textContent='Pause';
-        timerInterval=setInterval(()=>{ sessionSeconds++; updateDisplay(); },1000);
+        running=true; 
+        startBtn.textContent='Pause';
+        startTimestamp = Date.now(); // ADDED
+        timerInterval=setInterval(()=>{
+            const elapsed = Math.floor((Date.now() - startTimestamp)/1000); // ADDED
+            sessionSeconds = parseInt(localStorage.getItem('session_seconds')||0) + elapsed; // ADDED
+            updateDisplay();
+        },1000);
       }else{
-        running=false; startBtn.textContent='Start'; clearInterval(timerInterval);
+        running=false; startBtn.textContent='Start'; 
+        clearInterval(timerInterval);
+        // update session_seconds on pause
+        const elapsed = Math.floor((Date.now() - startTimestamp)/1000); // ADDED
+        localStorage.setItem('session_seconds', (parseInt(localStorage.getItem('session_seconds')||0) + elapsed)); // ADDED
       }
     });
-    resetBtn.addEventListener('click', ()=>{ if(running){clearInterval(timerInterval); running=false; startBtn.textContent='Start';} sessionSeconds=0; updateDisplay(); });
-    saveBtn.addEventListener('click', ()=>{
-      const mins=Math.round(sessionSeconds/60); if(mins<=0){alert('Session is empty'); return;}
-      const data=loadData(); const key=todayKey(); data[key]=(data[key]||0)+mins; saveData(data);
-      sessionSeconds=0; updateDisplay(); refreshToday(); refreshChart(); maybeCelebrate(); alert('Saved '+mins+' minutes');
+
+    resetBtn.addEventListener('click', ()=>{ 
+        if(running){clearInterval(timerInterval); running=false; startBtn.textContent='Start';} 
+        sessionSeconds=0; 
+        updateDisplay(); 
+        localStorage.setItem('session_seconds', 0); // ADDED
     });
+
+    saveBtn.addEventListener('click', ()=>{
+      const mins = sessionSeconds / 60; // use exact seconds
+      if(mins <= 0){alert('Session is empty'); return;}
+      const data=loadData(); const key=todayKey(); data[key] = (data[key] || 0) + mins; saveData(data);
+      sessionSeconds=0; 
+      localStorage.setItem('session_seconds', 0); // ADDED
+      updateDisplay(); 
+      refreshToday(); 
+      refreshChart(); 
+      maybeCelebrate(); 
+      alert('Saved '+Math.round(mins)+' minutes');
+    });
+
     add25.addEventListener('click', ()=>addMinutesToToday(25));
     add50.addEventListener('click', ()=>addMinutesToToday(50));
     clearToday.addEventListener('click', ()=>{ if(!confirm('Clear today?')) return; const d=loadData(); delete d[todayKey()]; saveData(d); refreshToday(); refreshChart(); });
@@ -203,15 +229,14 @@
 
     let chart=null;
     function getRangeDays(n){ 
-  const arr=[]; 
-  for(let i=0;i<n;i++){ 
-    const d=new Date(); 
-    d.setDate(d.getDate()+i); 
-    arr.push(d.toISOString().slice(0,10)); 
-  } 
-  return arr; 
-}
-
+        const arr=[]; 
+        for(let i=0;i<n;i++){ 
+            const d=new Date(); 
+            d.setDate(d.getDate()+i); 
+            arr.push(d.toISOString().slice(0,10)); 
+        } 
+        return arr; 
+    }
 
     function refreshChart(){
       const data = loadData();
@@ -233,7 +258,7 @@
         label:'Minutes',
         data:values,
         backgroundColor:'#6C63FF',
-        borderRadius: 10 // <-- makes bars rounded like cylinders
+        borderRadius: 10
        }]
        },
        options:{
@@ -247,25 +272,40 @@
 
       }else{ chart.data.labels=labels; chart.data.datasets[0].data=values; chart.update(); }
 
-      // history
       historyList.innerHTML='';
       for(let i=days.length-1;i>=0;i--){
         const d=days[i]; const mins=data[d]||0;
         const el=document.createElement('div'); el.className='history-item';
-        el.innerHTML=`<div><strong>${d}</strong><div class=small>${mins} minutes</div></div>`;
+        el.innerHTML=`<div><strong>${d}</strong><div class=small>${Math.round(mins)} minutes</div></div>`;
         historyList.appendChild(el);
       }
 
-      // average
       const sum=values.reduce((a,b)=>a+b,0); const avg=values.length? (sum/values.length).toFixed(1):0;
       avgMinutesEl.textContent=avg;
     }
 
-    function refreshToday(){ const d=loadData(); const t=d[todayKey()]||0; todayTotalEl.textContent=t+'m'; todayDateEl.textContent=todayKey(); }
+    function refreshToday(){ 
+        const d=loadData(); 
+        const t=d[todayKey()]||0; 
+        todayTotalEl.textContent=Math.round(t)+'m'; 
+        todayDateEl.textContent=todayKey(); 
+    }
 
-    exportBtn.addEventListener('click', ()=>{ const data=localStorage.getItem('study_data')||'{}'; const blob=new Blob([data],{type:'application/json'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='study_data_'+todayKey()+'.json'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); });
+    exportBtn.addEventListener('click', ()=>{ 
+        const data=localStorage.getItem('study_data')||'{}'; 
+        const blob=new Blob([data],{type:'application/json'}); 
+        const url=URL.createObjectURL(blob); 
+        const a=document.createElement('a'); 
+        a.href=url; 
+        a.download='study_data_'+todayKey()+'.json'; 
+        document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); 
+    });
     importBtn.addEventListener('click', ()=>importFile.click());
-    importFile.addEventListener('change',async ev=>{const f=ev.target.files[0]; if(!f) return; const txt=await f.text(); try{const obj=JSON.parse(txt); localStorage.setItem('study_data',JSON.stringify(obj)); alert('Imported'); refreshToday(); refreshChart(); }catch(e){alert('Invalid JSON');}});
+    importFile.addEventListener('change',async ev=>{
+        const f=ev.target.files[0]; if(!f) return; 
+        const txt=await f.text(); 
+        try{const obj=JSON.parse(txt); localStorage.setItem('study_data',JSON.stringify(obj)); alert('Imported'); refreshToday(); refreshChart(); }catch(e){alert('Invalid JSON');}
+    });
 
     function showPanel(which){ panelTimer.style.display=which==='timer'?'block':'none'; panelGraph.style.display=which==='graph'?'block':'none'; panelSettings.style.display=which==='settings'?'block':'none'; }
     navTimer.addEventListener('click',()=>showPanel('timer'));
@@ -273,38 +313,23 @@
     navSettings.addEventListener('click',()=>showPanel('settings'));
     displayRange.addEventListener('change',refreshChart);
 
-    (function init(){ todayDateEl.textContent=todayKey(); refreshToday(); refreshChart(); updateDisplay(); setTimeout(maybeCelebrate,400); })();
-    window.addEventListener('beforeunload', () => {
-    if(sessionSeconds > 0){
-        const data = loadData();
-        const key = todayKey();
-        const mins = Math.round(sessionSeconds / 60);
-        data[key] = (data[key] || 0) + mins;
-        saveData(data);
-    }
-});
-window.addEventListener('beforeunload', () => {
-    if(sessionSeconds > 0){
-        const data = loadData();
-        const key = todayKey();
-        // Save exact seconds
-        data[key] = (data[key] || 0) + sessionSeconds / 60; // keep fractional minutes
-        saveData(data);
-        localStorage.setItem('session_seconds', sessionSeconds); // save current running seconds
-    }
-});
+    // ---- INIT ----
+    (function init(){
+        const savedSeconds = parseInt(localStorage.getItem('session_seconds')||'0',10);
+        if(savedSeconds>0) sessionSeconds = savedSeconds;
+        todayDateEl.textContent=todayKey();
+        refreshToday();
+        refreshChart();
+        updateDisplay();
+        setTimeout(maybeCelebrate,400);
+    })();
 
-// Restore seconds on init
-(function init(){
-    const savedSeconds = parseInt(localStorage.getItem('session_seconds')||'0',10);
-    if(savedSeconds>0) sessionSeconds = savedSeconds;
-    todayDateEl.textContent=todayKey();
-    refreshToday();
-    refreshChart();
-    updateDisplay();
-    setTimeout(maybeCelebrate,400);
-})();
-
-  </script>
+    window.addEventListener('beforeunload', ()=>{
+        if(running){
+            const elapsed = Math.floor((Date.now() - startTimestamp)/1000);
+            localStorage.setItem('session_seconds', (parseInt(localStorage.getItem('session_seconds')||0) + elapsed));
+        }
+    });
+</script>
 </body>
 </html>
