@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Study Tracker — Timer, Graph & Celebration</title>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <!-- confetti -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+  <style>
+    :root{--accent:#6C63FF;--muted:#666}
+    *{box-sizing:border-box}
+    body{
+      font-family:Inter,system-ui,Segoe UI,Roboto,Arial;
+      line-height:1.4;
+      margin:0;
+      /* nice animated gradient background */
+      background: linear-gradient(135deg, #ff9a9e, #fad0c4, #fbc2eb, #a1c4fd, #c2e9fb, #d4fc79, #96e6a1);
+      background-size: 600% 600%;
+      animation: gradientBG 15s ease infinite;
+      color:#111
+    }
+    @keyframes gradientBG {
+      0%{background-position:0% 50%;}
+      50%{background-position:100% 50%;}
+      100%{background-position:0% 50%;}
+    }
+    .app{max-width:980px;margin:28px auto;padding:20px}
+    header{display:flex;align-items:center;justify-content:space-between}
+    h1{margin:0;font-size:20px}
+    nav{display:flex;gap:8px}
+    .btn{background:var(--accent);color:#fff;padding:8px 12px;border-radius:10px;border:0;cursor:pointer}
+    .btn.secondary{background:#fff;color:var(--accent);border:1px solid rgba(108,99,255,0.15)}
+    .layout{display:grid;grid-template-columns:1fr;gap:16px;margin-top:18px}
+    @media(min-width:900px){.layout{grid-template-columns:360px 1fr}}
+    .card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 6px 18px rgba(16,24,40,0.06);width: 650px; position: relative;right:70px;}
+    .timer-big{font-size:40px;font-weight:700;letter-spacing:1px;position: relative;left: 80px;}
+    .controls{display:flex;gap:8px;margin-top:12px}
+    .small{color:var(--muted);font-size:13px}
+    .settings-row{display:flex;gap:8px;align-items:center;margin-top:10px}
+    label{font-size:13px}
+    input[type=number], input[type=text]{padding:8px;border-radius:8px;border:1px solid #e6e9f2}
+    .graph-wrap{height:360px}
+    .history-list{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+    .history-item{display:flex;justify-content:space-between;padding:8px;border-radius:8px;background:#fbfbff}
+    footer{margin-top:18px;text-align:center;color:var(--muted);font-size:13px}
+    .hidden{display:none}
+    .avg-box{margin-top:12px;font-size:14px;font-weight:600;text-align:center;color:#333}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div>
+        <h1>Study Tracker</h1>
+        <div class="small">Timer • Daily target • Celebration • Progress graph</div>
+      </div>
+      <nav>
+        <button class="btn" id="nav-timer">Timer</button>
+        <button class="btn secondary" id="nav-graph">Progress</button>
+        <button class="btn secondary" id="nav-settings">Settings</button>
+      </nav>
+    </header>
+
+    <main class="layout">
+      <!-- Left: Timer / summary -->
+      <section class="card" id="panel-timer">
+        <div>
+          <div class="small">Today • <span id="today-date"></span></div>
+          <div class="timer-big" id="display-timer">00:00:00</div>
+          <div class="small">Session: <span id="session-state">stopped</span></div>
+
+          <div class="controls">
+            <button class="btn" id="start-pause">Start</button>
+            <button class="btn secondary" id="reset-session">Reset</button>
+            <button class="btn secondary" id="save-session">Save</button>
+          </div>
+
+          <div class="settings-row">
+            <label>Daily target (minutes)</label>
+            <input id="daily-target" type="number" min="1" value="120" style="width:90px" />
+            <div style="margin-left:auto;text-align:right">
+              <div class="small">Today total</div>
+              <div id="today-total">0m</div>
+            </div>
+          </div>
+
+          <div class="small" style="margin-top:12px">Quick actions</div>
+          <div class="controls" style="margin-top:8px">
+            <button class="btn secondary" id="add-25">+25m</button>
+            <button class="btn secondary" id="add-50">+50m</button>
+            <button class="btn secondary" id="clear-today">Clear</button>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- Right: Graph / history / settings panels (toggle) -->
+      <section>
+        <div class="card" id="panel-graph">
+          <h3 style="margin-top:0">Progress (last 14 days)</h3>
+          <div class="graph-wrap">
+            <canvas id="progressChart" style="width:100%;height:100%"></canvas>
+          </div>
+          <div class="avg-box">Average: <span id="avgMinutes">0</span> minutes/day</div>
+          <div class="history-list" id="history-list"></div>
+        </div>
+
+        <div class="card hidden" id="panel-settings">
+          <h3 style="margin-top:0">Settings</h3>
+          <div class="small">Your data is stored locally in the browser (localStorage).</div>
+          <div style="margin-top:12px">
+            <label>Display range (days)</label>
+            <input id="display-range" type="number" min="3" max="60" value="14" style="width:80px;margin-left:8px" />
+          </div>
+          <div style="margin-top:12px" class="controls">
+            <button class="btn" id="export-data">Export JSON</button>
+            <button class="btn secondary" id="import-data">Import JSON</button>
+            <input id="import-file" type="file" accept="application/json" class="hidden" />
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      Built for study sessions • Data stored locally • Open-source-friendly
+    </footer>
+  </div>
+
+  <script>
+    // ---- Utilities ----
+    const qs = s => document.querySelector(s);
+    const todayKey = () => new Date().toISOString().slice(0,10);
+
+    // ---- Elements ----
+    const displayTimer = qs('#display-timer');
+    const startBtn = qs('#start-pause');
+    const resetBtn = qs('#reset-session');
+    const saveBtn = qs('#save-session');
+    const sessionState = qs('#session-state');
+    const todayDateEl = qs('#today-date');
+    const todayTotalEl = qs('#today-total');
+    const dailyTargetInput = qs('#daily-target');
+    const add25 = qs('#add-25');
+    const add50 = qs('#add-50');
+    const clearToday = qs('#clear-today');
+    const historyList = qs('#history-list');
+    const displayRange = qs('#display-range');
+    const exportBtn = qs('#export-data');
+    const importBtn = qs('#import-data');
+    const importFile = qs('#import-file');
+    const avgMinutesEl = qs('#avgMinutes');
+
+    // Navigation
+    const navTimer = qs('#nav-timer');
+    const navGraph = qs('#nav-graph');
+    const navSettings = qs('#nav-settings');
+    const panelTimer = qs('#panel-timer');
+    const panelGraph = qs('#panel-graph');
+    const panelSettings = qs('#panel-settings');
+
+    // ---- App State ----
+    let timerInterval = null;
+    let sessionSeconds = 0; // running session
+    let running = false;
+
+    function loadData(){ try{ return JSON.parse(localStorage.getItem('study_data')||'{}'); }catch(e){return {}} }
+    function saveData(d){ localStorage.setItem('study_data', JSON.stringify(d)); }
+
+    function formatTime(sec){
+      const h = Math.floor(sec/3600).toString().padStart(2,'0');
+      const m = Math.floor((sec%3600)/60).toString().padStart(2,'0');
+      const s = (sec%60).toString().padStart(2,'0');
+      return `${h}:${m}:${s}`;
+    }
+    function updateDisplay(){ displayTimer.textContent=formatTime(sessionSeconds); sessionState.textContent=running?'running':'stopped'; }
+
+    startBtn.addEventListener('click', ()=>{
+      if(!running){
+        running=true; startBtn.textContent='Pause';
+        timerInterval=setInterval(()=>{ sessionSeconds++; updateDisplay(); },1000);
+      }else{
+        running=false; startBtn.textContent='Start'; clearInterval(timerInterval);
+      }
+    });
+    resetBtn.addEventListener('click', ()=>{ if(running){clearInterval(timerInterval); running=false; startBtn.textContent='Start';} sessionSeconds=0; updateDisplay(); });
+    saveBtn.addEventListener('click', ()=>{
+      const mins=Math.round(sessionSeconds/60); if(mins<=0){alert('Session is empty'); return;}
+      const data=loadData(); const key=todayKey(); data[key]=(data[key]||0)+mins; saveData(data);
+      sessionSeconds=0; updateDisplay(); refreshToday(); refreshChart(); maybeCelebrate(); alert('Saved '+mins+' minutes');
+    });
+    add25.addEventListener('click', ()=>addMinutesToToday(25));
+    add50.addEventListener('click', ()=>addMinutesToToday(50));
+    clearToday.addEventListener('click', ()=>{ if(!confirm('Clear today?')) return; const d=loadData(); delete d[todayKey()]; saveData(d); refreshToday(); refreshChart(); });
+    function addMinutesToToday(m){ const d=loadData(); const k=todayKey(); d[k]=(d[k]||0)+m; saveData(d); refreshToday(); refreshChart(); maybeCelebrate(); }
+
+    function maybeCelebrate(){
+      const target=Number(dailyTargetInput.value||0); if(!target) return;
+      const data=loadData(); const today=data[todayKey()]||0;
+      if(today>=target){ confetti({particleCount:150,spread:70,origin:{y:0.3}}); }
+    }
+
+    let chart=null;
+    function getRangeDays(n){ 
+  const arr=[]; 
+  for(let i=0;i<n;i++){ 
+    const d=new Date(); 
+    d.setDate(d.getDate()+i); 
+    arr.push(d.toISOString().slice(0,10)); 
+  } 
+  return arr; 
+}
+
+
+    function refreshChart(){
+      const data = loadData();
+      const keys = Object.keys(data).sort(); // all saved days
+      const days = keys.length ? keys : [todayKey()];
+      const labels=days.map(d=>d);
+      const values=days.map(d=>data[d]||0);
+
+      if(!chart){
+        const ctx=qs('#progressChart').getContext('2d');
+        const gradient=ctx.createLinearGradient(0,0,0,400);
+        gradient.addColorStop(0,'rgba(108,99,255,0.6)');
+        gradient.addColorStop(1,'rgba(108,99,255,0.05)');
+        chart=new Chart(ctx,{
+        type:'bar',  // change line -> bar
+        data:{
+        labels,
+        datasets:[{
+        label:'Minutes',
+        data:values,
+        backgroundColor:'#6C63FF',
+        borderRadius: 10 // <-- makes bars rounded like cylinders
+       }]
+       },
+       options:{
+       responsive:true,
+       maintainAspectRatio:false,
+       scales:{
+       y:{beginAtZero:true}
+        }
+        }
+    });
+
+      }else{ chart.data.labels=labels; chart.data.datasets[0].data=values; chart.update(); }
+
+      // history
+      historyList.innerHTML='';
+      for(let i=days.length-1;i>=0;i--){
+        const d=days[i]; const mins=data[d]||0;
+        const el=document.createElement('div'); el.className='history-item';
+        el.innerHTML=`<div><strong>${d}</strong><div class=small>${mins} minutes</div></div>`;
+        historyList.appendChild(el);
+      }
+
+      // average
+      const sum=values.reduce((a,b)=>a+b,0); const avg=values.length? (sum/values.length).toFixed(1):0;
+      avgMinutesEl.textContent=avg;
+    }
+
+    function refreshToday(){ const d=loadData(); const t=d[todayKey()]||0; todayTotalEl.textContent=t+'m'; todayDateEl.textContent=todayKey(); }
+
+    exportBtn.addEventListener('click', ()=>{ const data=localStorage.getItem('study_data')||'{}'; const blob=new Blob([data],{type:'application/json'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='study_data_'+todayKey()+'.json'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); });
+    importBtn.addEventListener('click', ()=>importFile.click());
+    importFile.addEventListener('change',async ev=>{const f=ev.target.files[0]; if(!f) return; const txt=await f.text(); try{const obj=JSON.parse(txt); localStorage.setItem('study_data',JSON.stringify(obj)); alert('Imported'); refreshToday(); refreshChart(); }catch(e){alert('Invalid JSON');}});
+
+    function showPanel(which){ panelTimer.style.display=which==='timer'?'block':'none'; panelGraph.style.display=which==='graph'?'block':'none'; panelSettings.style.display=which==='settings'?'block':'none'; }
+    navTimer.addEventListener('click',()=>showPanel('timer'));
+    navGraph.addEventListener('click',()=>showPanel('graph'));
+    navSettings.addEventListener('click',()=>showPanel('settings'));
+    displayRange.addEventListener('change',refreshChart);
+
+    (function init(){ todayDateEl.textContent=todayKey(); refreshToday(); refreshChart(); updateDisplay(); setTimeout(maybeCelebrate,400); })();
+  </script>
+</body>
+</html>
