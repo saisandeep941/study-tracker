@@ -274,6 +274,37 @@
     displayRange.addEventListener('change',refreshChart);
 
     (function init(){ todayDateEl.textContent=todayKey(); refreshToday(); refreshChart(); updateDisplay(); setTimeout(maybeCelebrate,400); })();
+    window.addEventListener('beforeunload', () => {
+    if(sessionSeconds > 0){
+        const data = loadData();
+        const key = todayKey();
+        const mins = Math.round(sessionSeconds / 60);
+        data[key] = (data[key] || 0) + mins;
+        saveData(data);
+    }
+});
+window.addEventListener('beforeunload', () => {
+    if(sessionSeconds > 0){
+        const data = loadData();
+        const key = todayKey();
+        // Save exact seconds
+        data[key] = (data[key] || 0) + sessionSeconds / 60; // keep fractional minutes
+        saveData(data);
+        localStorage.setItem('session_seconds', sessionSeconds); // save current running seconds
+    }
+});
+
+// Restore seconds on init
+(function init(){
+    const savedSeconds = parseInt(localStorage.getItem('session_seconds')||'0',10);
+    if(savedSeconds>0) sessionSeconds = savedSeconds;
+    todayDateEl.textContent=todayKey();
+    refreshToday();
+    refreshChart();
+    updateDisplay();
+    setTimeout(maybeCelebrate,400);
+})();
+
   </script>
 </body>
 </html>
